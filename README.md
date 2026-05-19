@@ -8,7 +8,7 @@ O objetivo é construir um modelo de credit scoring para prever a probabilidade 
 
 A demonstração da aplicação Streamlit em funcionamento pode ser acessada pelo link abaixo:
 
-[Vídeo de demonstração][streamlit-app-2026-05-18-22-05-29.webm](https://github.com/user-attachments/assets/842767f9-4e6e-4110-b471-1adccf7ad04f)
+[Vídeo de demonstração](streamlit-app-2026-05-18-22-05-29.webm)
 
 ## Arquivos do projeto
 
