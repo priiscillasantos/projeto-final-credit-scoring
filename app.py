@@ -1,115 +1,183 @@
 import pickle
-from pathlib import Path
-
 import pandas as pd
 import streamlit as st
+import matplotlib.pyplot as plt
 
 
+# Configuração da página
 st.set_page_config(
     page_title='Credit Scoring - Módulo 38',
-    page_icon='💳',
     layout='wide'
 )
 
 
+# Carregar o modelo salvo
 @st.cache_resource
-def carregar_modelo(caminho_modelo: str = 'model_final.pkl'):
-    caminho = Path(caminho_modelo)
-    if not caminho.exists():
-        st.error("Arquivo 'model_final.pkl' não encontrado. Coloque o modelo na mesma pasta do app.py.")
-        st.stop()
-
-    with open(caminho, 'rb') as arquivo:
-        objeto = pickle.load(arquivo)
-
-    return objeto
+def carregar_modelo():
+    with open('model_final.pkl', 'rb') as arquivo:
+        modelo = pickle.load(arquivo)
+    return modelo
 
 
-def preparar_base(base: pd.DataFrame, features: list) -> pd.DataFrame:
-    # Copia a base para evitar alterar o arquivo original enviado pelo usuário.
-    base_modelo = base.copy()
-
-    # Remove colunas que podem aparecer no arquivo, mas não devem entrar na modelagem.
-    colunas_remover = ['data_ref', 'index', 'mau']
-    base_modelo = base_modelo.drop(columns=[col for col in colunas_remover if col in base_modelo.columns], errors='ignore')
-
-    # Garante que todas as colunas esperadas pelo modelo existam.
-    for col in features:
-        if col not in base_modelo.columns:
-            base_modelo[col] = pd.NA
-
-    # Mantém a mesma ordem de colunas usada no treinamento.
-    base_modelo = base_modelo[features]
-
-    return base_modelo
+modelo = carregar_modelo()
 
 
+# Título principal
 st.title('Credit Scoring - Módulo 38')
-st.write('Aplicação para escorar uma base de clientes usando o modelo treinado no projeto final.')
 
-modelo_objeto = carregar_modelo()
+st.write(
+    'Aplicação desenvolvida para escorar uma base de clientes utilizando '
+    'o modelo treinado no projeto final.'
+)
 
-if isinstance(modelo_objeto, dict):
-    modelo = modelo_objeto['modelo']
-    features = modelo_objeto['features']
-    threshold = modelo_objeto.get('threshold', 0.5)
-else:
-    modelo = modelo_objeto
-    features = None
-    threshold = 0.5
 
+# Sidebar
 st.sidebar.header('Configurações')
-threshold = st.sidebar.slider('Ponto de corte', min_value=0.0, max_value=1.0, value=float(threshold), step=0.01)
 
-arquivo_csv = st.file_uploader('Suba um arquivo CSV para escoragem', type=['csv'])
+ponto_corte = st.sidebar.slider(
+    'Ponto de corte',
+    min_value=0.0,
+    max_value=1.0,
+    value=0.50,
+    step=0.01
+)
 
-if arquivo_csv is not None:
-    try:
-        base = pd.read_csv(arquivo_csv)
-    except UnicodeDecodeError:
-        arquivo_csv.seek(0)
-        base = pd.read_csv(arquivo_csv, encoding='latin1')
-    except Exception as erro:
-        st.error(f'Erro ao carregar o CSV: {erro}')
-        st.stop()
+st.sidebar.write(
+    'Clientes com probabilidade maior ou igual ao ponto de corte '
+    'serão classificados como **Mau**.'
+)
+
+
+# Upload da base
+st.subheader('Upload da base')
+
+arquivo = st.file_uploader(
+    'Suba um arquivo CSV para escoragem',
+    type=['csv']
+)
+
+
+if arquivo is not None:
+
+    base = pd.read_csv(arquivo)
+
+    st.success('Arquivo carregado com sucesso.')
 
     st.subheader('Prévia da base enviada')
     st.dataframe(base.head())
 
-    st.write('Dimensão da base enviada:', base.shape)
+    col1, col2 = st.columns(2)
 
-    if features is None:
-        st.warning('O modelo não trouxe a lista de features. A base será enviada diretamente ao pipeline carregado.')
-        base_modelo = base.copy()
-    else:
-        base_modelo = preparar_base(base, features)
+    with col1:
+        st.metric('Quantidade de linhas', base.shape[0])
+
+    with col2:
+        st.metric('Quantidade de colunas', base.shape[1])
+
+    # Removendo colunas que não devem ser usadas pelo modelo, caso existam
+    colunas_remover = ['mau', 'data_ref', 'index']
+    base_modelo = base.drop(columns=colunas_remover, errors='ignore').copy()
+
+    st.info(
+        'Caso a base contenha as colunas `mau`, `data_ref` ou `index`, '
+        'elas serão removidas automaticamente antes da escoragem.'
+    )
 
     if st.button('Escorar base'):
+
         try:
-            prob_mau = modelo.predict_proba(base_modelo)[:, 1]
-            pred_mau = (prob_mau >= threshold).astype(int)
+            # Gerar probabilidade da classe 1, que representa mau pagador
+            probabilidades = modelo.predict_proba(base_modelo)[:, 1]
 
             resultado = base.copy()
-            resultado['score_mau'] = prob_mau
-            resultado['classificacao_mau'] = pred_mau
-            resultado['classificacao'] = resultado['classificacao_mau'].map({0: 'bom', 1: 'mau'})
+            resultado['probabilidade_mau'] = probabilidades
+            resultado['classificacao'] = resultado['probabilidade_mau'].apply(
+                lambda x: 'Mau' if x >= ponto_corte else 'Bom'
+            )
 
-            st.subheader('Resultado da escoragem')
-            st.dataframe(resultado.head(50))
+            st.subheader('Resumo da escoragem')
+
+            qtd_bom = (resultado['classificacao'] == 'Bom').sum()
+            qtd_mau = (resultado['classificacao'] == 'Mau').sum()
+            perc_mau = qtd_mau / len(resultado) * 100
 
             col1, col2, col3 = st.columns(3)
-            col1.metric('Quantidade de clientes', len(resultado))
-            col2.metric('Taxa prevista de maus', f"{resultado['classificacao_mau'].mean() * 100:.2f}%")
-            col3.metric('Score médio de mau', f"{resultado['score_mau'].mean():.4f}")
 
-            csv_resultado = resultado.to_csv(index=False).encode('utf-8-sig')
+            with col1:
+                st.metric('Clientes classificados como Bom', qtd_bom)
+
+            with col2:
+                st.metric('Clientes classificados como Mau', qtd_mau)
+
+            with col3:
+                st.metric('% de clientes Mau', f'{perc_mau:.2f}%')
+
+            st.subheader('Resultado da escoragem')
+            st.dataframe(resultado.head(20))
+
+            # Gráfico de classificação
+            st.subheader('Distribuição das classificações')
+
+            contagem_classificacao = resultado['classificacao'].value_counts()
+
+            fig, ax = plt.subplots(figsize=(7, 4))
+            ax.bar(contagem_classificacao.index, contagem_classificacao.values)
+            ax.set_title('Quantidade de clientes por classificação')
+            ax.set_xlabel('Classificação')
+            ax.set_ylabel('Quantidade de clientes')
+
+            st.pyplot(fig)
+
+            # Gráfico de probabilidade
+            st.subheader('Distribuição das probabilidades de inadimplência')
+
+            fig2, ax2 = plt.subplots(figsize=(9, 4))
+            ax2.hist(resultado['probabilidade_mau'], bins=20)
+            ax2.axvline(ponto_corte, linestyle='--')
+            ax2.set_title('Distribuição da probabilidade de mau pagador')
+            ax2.set_xlabel('Probabilidade de mau')
+            ax2.set_ylabel('Quantidade de clientes')
+
+            st.pyplot(fig2)
+
+            # Filtro dinâmico
+            st.subheader('Filtro por classificação')
+
+            filtro = st.selectbox(
+                'Selecione a classificação para visualizar',
+                ['Todos', 'Bom', 'Mau']
+            )
+
+            if filtro == 'Todos':
+                resultado_filtrado = resultado.copy()
+            else:
+                resultado_filtrado = resultado[resultado['classificacao'] == filtro].copy()
+
+            st.dataframe(resultado_filtrado)
+
+            # Clientes de maior risco
+            st.subheader('Top 20 clientes com maior risco')
+
+            clientes_risco = resultado.sort_values(
+                by='probabilidade_mau',
+                ascending=False
+            ).head(20)
+
+            st.dataframe(clientes_risco)
+
+            # Download
+            csv_resultado = resultado.to_csv(index=False).encode('utf-8')
+
             st.download_button(
-                label='Baixar resultado em CSV',
+                label='Baixar base escorada em CSV',
                 data=csv_resultado,
                 file_name='base_escorada.csv',
                 mime='text/csv'
             )
+
         except Exception as erro:
-            st.error(f'Erro ao escorar a base: {erro}')
+            st.error('Ocorreu um erro ao escorar a base.')
+            st.write(erro)
+
 else:
-    st.info('Envie um arquivo CSV para iniciar a escoragem.')
+    st.warning('Faça o upload de um arquivo CSV para iniciar a escoragem.')
