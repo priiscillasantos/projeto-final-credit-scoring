@@ -6,7 +6,8 @@ O objetivo é construir um modelo de credit scoring para prever a probabilidade 
 
 ## Arquivos do projeto
 
-- `Mod38Projeto.ipynb`: notebook com o desenvolvimento completo do projeto.
+- `Mod38Exercicio1.ipynb`: notebook da atividade prática do módulo, com desenvolvimento inicial de credit scoring, pipeline e PyCaret.
+- `Mod38Projeto.ipynb`: notebook do projeto final, com o desenvolvimento completo do modelo, avaliação, pipeline, PyCaret e salvamento do modelo.
 - `app.py`: aplicação Streamlit para realizar a escoragem de novas bases.
 - `model_final.pkl`: modelo final treinado e salvo em pickle.
 - `requirements.txt`: bibliotecas necessárias para execução.
